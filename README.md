@@ -11,7 +11,9 @@
 ## Datasets
  * Create a folder `data/`
  * **Clear10**, **Clear100**: retrieve from: https://clear-benchmark.github.io/
+ * **Stream51**: retrieve from: https://github.com/tyler-hayes/Stream-51
  * **CORe50**: `sh core50.sh`
+
 
 ## Training
 All commands should be run under the project root directory. **The scripts are set up for 1 GPUs** but can be modified for your hardware.
