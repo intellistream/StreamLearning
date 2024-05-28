@@ -20,7 +20,8 @@ All commands should be run under the project root directory. **The scripts are s
 
 ```bash
 sh experiments/clear10.sh
-sh experiments/imagenet-r.sh
-sh experiments/domainnet.sh
+sh experiments/clear100.sh
+sh experiments/core50.sh
+sh experiments/stream51.sh
 ```
 
