@@ -1,6 +1,9 @@
+import math
+from collections import namedtuple
+
 import torch
 import torch.nn.functional as F
-from collections import namedtuple
+
 
 class StreampromptUpdate(object):
     def __init__(self, config):
@@ -8,6 +11,8 @@ class StreampromptUpdate(object):
         Args = namedtuple('Args', ['mem_size'])
         params = Args(mem_size=config.mem_size)
         self.params = params
+        # self.update_size = config.update_size
+        self.curr_step=0
 
     def update(self, buffer, x, y, **kwargs):
         batch_size = x.size(0)
@@ -35,15 +40,31 @@ class StreampromptUpdate(object):
             buffer_img = torch.cat((x, buffer.buffer_img), dim=0)
             emds = buffer.model.feat.patch_embed(buffer_img.detach())
 
-        data_sim = self.data_selection(emds[:batch_size], buffer.model, self.params.mem_size)
-        data_prob = F.softmax(data_sim, dim=0) #
-        idx_new_data = torch.multinomial(data_prob, num_samples=batch_size // 2, replacement=False).to(x.device)
+        indices = torch.FloatTensor(x.size(0)).to(x.device).uniform_(0, buffer.n_seen_so_far).long()
+        valid_indices = (indices < buffer.buffer_img.size(0)).long()
 
-        buffer_sim = self.data_selection(emds[batch_size:], buffer.model, self.params.mem_size)
-        buffer_prob = 1 - F.softmax(buffer_sim, dim=0) #
-        idx_buffer = torch.multinomial(buffer_prob, num_samples=batch_size // 2, replacement=False).to(x.device)
+        num_samples = len(valid_indices.nonzero().squeeze(-1))
+        num_samples = min(10, max(1, num_samples))
+        data_sim = self.data_selection(emds[:batch_size], buffer.model)
+        buffer_sim = self.data_selection(emds[batch_size:], buffer.model)
 
-        buffer.n_seen_so_far += x.size(0)
+        buffer.n_seen_so_far += batch_size
+
+        sorted_indices = torch.argsort(data_sim, descending=True)
+        ranks = torch.arange(1, len(data_sim) + 1, dtype=torch.float32)
+        data_prob = 1 / ranks
+        data_prob = 1 - data_prob / data_prob.sum()
+        data_prob[sorted_indices] = data_prob.clone()
+
+        sorted_indices = torch.argsort(buffer_sim, descending=True)
+        ranks = torch.arange(1, len(buffer_sim) + 1, dtype=torch.float32)
+        buffer_prob = 1 / ranks
+        buffer_prob = 1 - buffer_prob / buffer_prob.sum()
+        buffer_prob[sorted_indices] = buffer_prob.clone()
+
+        idx_buffer = torch.multinomial(buffer_prob, num_samples=num_samples, replacement=False)
+        idx_new_data = torch.multinomial(data_prob, num_samples=num_samples, replacement=False)
+
 
         if idx_buffer.numel() == 0:
             return []
@@ -54,15 +75,12 @@ class StreampromptUpdate(object):
         assert idx_new_data.max() < y.size(0)
 
         idx_map = {idx_buffer[i].item(): idx_new_data[i].item() for i in range(idx_buffer.size(0))}
-
-        replace_y = y[list(idx_map.values())]
         buffer.buffer_img[list(idx_map.keys())] = x[list(idx_map.values())].cuda()
-        buffer.buffer_label[list(idx_map.keys())] = replace_y.cuda()
-
+        buffer.buffer_label[list(idx_map.keys())] = y[list(idx_map.values())].cuda()
         return list(idx_map.keys())
 
 
-    def data_selection(self, data_tensor, model, size):
+    def data_selection(self, data_tensor, model):
         # extract the prompt
         p = []
         k = []
@@ -74,7 +92,7 @@ class StreampromptUpdate(object):
         # for name, param in model.named_parameters():
         for name, param in model.prompt.named_parameters():
             if 'e_p' in name:
-                p.append(param[s:f].detach().clone())
+                p.append(param[:f].detach().clone())
 
         with torch.no_grad():
             # prompt_tensor = torch.cat(p, dim=0)
