@@ -129,7 +129,7 @@ class NormalNN(nn.Module):
                     complexity = round(traintime / limit, 2)
                     effective_batches = int(len(train_loader) / complexity)
                     # avoid traintime too large and effective_batches=0
-                    if effective_batches <= 1:
+                    if effective_batches < 1:
                         effective_batches += 1
                     print(f'For Traintime Limit: {limit} | Current Traintime: {traintime} | Complexity: {complexity:.2f} | Effective Batches: {effective_batches}')
                     effective = np.linspace(0, len(train_loader), effective_batches, endpoint=False, dtype=int)
