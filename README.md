@@ -1,5 +1,3 @@
-##  StreamPrompt: Learnable Prompt-guided Data Selection for Efficient Stream Learning
-
 ## Setup
 * Install miniconda
 * `conda env create -f environment.yml`
