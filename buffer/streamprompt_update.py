@@ -5,6 +5,28 @@ import torch
 import torch.nn.functional as F
 
 
+def _default_device() -> torch.device:
+    if hasattr(torch, 'npu') and torch.npu.is_available():
+        return torch.device('npu')
+    if torch.cuda.is_available():
+        return torch.device('cuda')
+    return torch.device('cpu')
+
+
+def _resolve_target_device(*tensors) -> torch.device:
+    for tensor in tensors:
+        if isinstance(tensor, torch.Tensor):
+            return tensor.device
+    return _default_device()
+
+
+def _empty_device_cache(device: torch.device) -> None:
+    if device.type == 'cuda' and hasattr(torch, 'cuda'):
+        torch.cuda.empty_cache()
+    elif device.type == 'npu' and hasattr(torch, 'npu'):
+        torch.npu.empty_cache()
+
+
 class StreampromptUpdate(object):
     def __init__(self, config):
         super().__init__()
@@ -75,8 +97,9 @@ class StreampromptUpdate(object):
         assert idx_new_data.max() < y.size(0)
 
         idx_map = {idx_buffer[i].item(): idx_new_data[i].item() for i in range(idx_buffer.size(0))}
-        buffer.buffer_img[list(idx_map.keys())] = x[list(idx_map.values())].cuda()
-        buffer.buffer_label[list(idx_map.keys())] = y[list(idx_map.values())].cuda()
+    target_device = _resolve_target_device(buffer.buffer_img, x)
+    buffer.buffer_img[list(idx_map.keys())] = x[list(idx_map.values())].to(target_device)
+    buffer.buffer_label[list(idx_map.keys())] = y[list(idx_map.values())].to(target_device)
         return list(idx_map.keys())
 
 
@@ -107,6 +130,6 @@ class StreampromptUpdate(object):
             cos_sim = torch.matmul(data_norm, prompt_norm.transpose(0, 1).unsqueeze(0))  # (B, N, pool_size * p_length)
             avg_similarities = cos_sim.mean(dim=[1, 2])  # (B,)
 
-        torch.cuda.empty_cache()
+        _empty_device_cache(data_tensor.device)
 
         return avg_similarities

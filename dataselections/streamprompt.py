@@ -7,6 +7,44 @@ import torch.distributions as dist
 from scipy.spatial.distance import cdist
 import geomloss
 
+
+def _default_device() -> torch.device:
+    if hasattr(torch, 'npu') and torch.npu.is_available():
+        return torch.device('npu')
+    if torch.cuda.is_available():
+        return torch.device('cuda')
+    return torch.device('cpu')
+
+
+def _resolve_model_device(model=None, fallback: torch.device | None = None) -> torch.device:
+    if model is not None:
+        for module_name in ('prompt', 'feat'):
+            module = getattr(model, module_name, None)
+            if module is None:
+                continue
+            parameters = getattr(module, 'parameters', None)
+            if callable(parameters):
+                for param in parameters():
+                    return param.device
+            buffers = getattr(module, 'buffers', None)
+            if callable(buffers):
+                for buffer in buffers():
+                    return buffer.device
+    return fallback or _default_device()
+
+
+def _move_to_device(value, device: torch.device):
+    if isinstance(value, torch.Tensor):
+        return value.to(device)
+    return value
+
+
+def _empty_device_cache(device: torch.device) -> None:
+    if device.type == 'cuda' and hasattr(torch, 'cuda'):
+        torch.cuda.empty_cache()
+    elif device.type == 'npu' and hasattr(torch, 'npu'):
+        torch.npu.empty_cache()
+
 def calc_prompt_similarity(examples, model=None, measure='wasserstein', otloss=None):
     # extract the prompt
     p = []
@@ -21,10 +59,13 @@ def calc_prompt_similarity(examples, model=None, measure='wasserstein', otloss=N
         if 'e_p' in name:
             p.append(param[:f].detach().clone())
 
+    example_device = examples.device if isinstance(examples, torch.Tensor) else None
+    device = _resolve_model_device(model, fallback=example_device)
+
     with torch.no_grad():
         # embed the batch data
         # the most time-consuming step which increases with the buffer size
-        data_tensor = model.feat.patch_embed(examples.cuda()).detach()
+        data_tensor = model.feat.patch_embed(_move_to_device(examples, device)).detach()
 
         o_prompt_tensor = torch.stack(p, dim=0).sum(2) # n_layer, task_per_pool * task_count, p_length, dim
         prompt_tensor = o_prompt_tensor.view(-1, 768)
@@ -64,9 +105,9 @@ def calc_prompt_similarity(examples, model=None, measure='wasserstein', otloss=N
             avg_similarities = []
             for i in range(data_tensor.shape[0]):
                 avg_similarities.append(torch.cdist(prompt_tensor, data_tensor[i], p=2).mean())
-            avg_similarities = torch.tensor(avg_similarities)
+            avg_similarities = torch.stack(avg_similarities)
 
-    torch.cuda.empty_cache()
+    _empty_device_cache(device)
     return avg_similarities
 
 def cost_func(a, b, p=2, metric='cosine'):
