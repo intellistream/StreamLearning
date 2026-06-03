@@ -1,3 +1,13 @@
+## StreamFP
+
+StreamFP is the implementation repository for fingerprint-guided data selection in efficient stream learning. The upstream GitHub repository is `intellistream/StreamLearning`; this local workspace uses the `streamfp` name to match the paper.
+
+## Publication
+
+This repository accompanies the following paper:
+
+- Changwu Li et al. "StreamFP: Fingerprint-guided Data Selection for Efficient Stream Learning." The ACM Web Conference 2026 (WWW 2026).
+
 ## Setup
 * Install miniconda
 * `conda env create -f environment.yml`
