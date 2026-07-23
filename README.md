@@ -1,6 +1,6 @@
 ## StreamFP
 
-StreamFP is the implementation repository for fingerprint-guided data selection in efficient stream learning. The upstream GitHub repository is `intellistream/StreamLearning`; this local workspace uses the `streamfp` name to match the paper.
+StreamFP is the implementation repository for fingerprint-guided data selection in efficient stream learning. The canonical maintained repository is [DataSysResearch/StreamFP](https://github.com/DataSysResearch/StreamFP). It was migrated from the historical `intellistream/StreamLearning` repository; that old location is retained only as provenance and may redirect here.
 
 ## Publication
 
@@ -32,4 +32,3 @@ sh experiments/clear100.sh
 sh experiments/core50.sh
 sh experiments/stream51.sh
 ```
-
